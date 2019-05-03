@@ -9,12 +9,12 @@
 # @example
 #   include xcat::master::postscripts
 class xcat::master::postscripts (
-   String $defsnapshot, # default snapshot ID for general repos (CentOS, EPEL, Puppet, etc.)
-   String $reposerverip, # mgmt IP of site server with current repos (CentOS, EPEL, Puppet, etc.)
+    String $defsnapshot,
+    String $reposerverip,
 ) {
 
     # local variables
-    $base_path = '/install/postscripts'
+    $ps_dir = '/install/postscripts'
 
     $file_defaults = {
         owner => 'root',
@@ -24,10 +24,9 @@ class xcat::master::postscripts (
 
     # scripts from templates
     file {
-        "${base_path}/yum_repos":
-            content => epp( "xcat/master/postscripts/yum_repos.epp" ),
+        "${ps_dir}/yum_repos":
             ensure  => 'file',
-            require => File[$base_path],
+            content => epp( 'xcat/master/postscripts/yum_repos.epp' ),
         ;
         default: * => $file_defaults ;
     }

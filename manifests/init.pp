@@ -1,8 +1,17 @@
-# @summary A short summary of the purpose of this class
+# @summary Primarily houses variables that are used by both xcat::master
+#          and xcat::client
 #
-# A description of what this class does
+# @param network_mgmt - String
+#                       xCAT boot and mgmt network, in CIDR format
+#
+# @param network_ipmi - String
+#                       xCAT IPMI network, in CIDR format
 #
 # @example
 #   include xcat
-class xcat {
+class xcat (
+    String $network_mgmt,
+    String $network_ipmi,
+) {
+    # does nothing at the moment
 }

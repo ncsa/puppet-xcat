@@ -2,58 +2,45 @@
 #
 # A description of what this class does
 #
+# Required ports list at:
+# https://xcat-docs.readthedocs.io/en/stable/advanced/ports/xcat_ports.html
+#
 # @example
 #   include xcat::master::firewall
 class xcat::master::firewall {
-}
-class adm::firewall {
 
-  ## IPTABLES - 
-  ##  - limit access to external services
-  ##    - cerberus SSH access only
-  $ncsa_cerberus = ['141.142.148.5', '141.142.236.23', '141.142.148.24', '141.142.236.22']
-  if ( $interface_extl ) {
-    each($ncsa_cerberus) | $index, $value | {
-      firewall { "0022 allow ssh connections from cerberus $value on EXT network via $interface_extl":
-        proto => 'tcp',
-        dport => '22',
-        source => $value,
-        iniface => $interface_extl,
-        action => 'accept',
-        provider => 'iptables',
-      }
-    }
-  }
+    # Get required values from hiera, ensure they are not empty
+    # network CIDR has a min length of 11 (x.x.x.x/nn)
+    $mgmt_network = lookup( 'xcat::network_mgmt', String[11] )
+    $ipmi_network = lookup( 'xcat::network_ipmi', String[11] )
 
+    $net_names = {
+        'MGMT' => $mgmt_network,
+        'IPMI' => $ipmi_network,
+    }
 
-  ##  - No restriction on mgmt, srvc networks
-  if ( $interface_mgmt ) {
-    firewall { "0022 drop ssh connections from MGMT network via $interface_mgmt":
-      proto => 'tcp',
-      dport => '22',
-      iniface => $interface_mgmt,
-      action => 'drop',
-      provider => 'iptables',
+    $net_port_map = {
+        'MGMT' => {
+            'tcp' => [ 67, 68, 69, 80, 514, 873, 3001, 3002, 4011 ],
+            'udp' => [ 69, 80, 514, 873, 3001, 3002 ],
+        },
+        'IPMI' => {
+            'tcp' => [ 25 ]
+        },
     }
-    firewall { "9990 accept all from MGMT network via $interface_mgmt":
-      proto => 'all',
-      iniface => $interface_mgmt,
-      action => 'accept',
+
+    # Allow known ports on xcat networks
+    $net_port_map.each | $name, $proto_port_map | {
+        $network = $net_names[$name]
+        $proto_port_map.each | $protocol, $portlist | {
+            firewall {
+                "208 allow incoming ${protocol} ports on XCAT ${name} net":
+                    action => 'accept',
+                    dport  => $portlist,
+                    proto  => $protocol,
+                    source => $network,
+            }
+        }
     }
-  }
-  if ( $interface_srvc ) {
-    firewall { "0022 drop ssh connections from SVC network via $interface_srvc":
-      proto => 'tcp',
-      dport => '22',
-      iniface => $interface_srvc,
-      action => 'drop',
-      provider => 'iptables',
-    }
-    firewall { "9990 accept all from SVC network via $interface_srvc":
-      proto => 'all',
-      iniface => $interface_srvc,
-      action => 'accept',
-    }
-  }
 
 }

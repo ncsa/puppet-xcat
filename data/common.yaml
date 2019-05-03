@@ -1,1 +1,2 @@
 ---
+xcat::master::root::sshkey_type: rsa

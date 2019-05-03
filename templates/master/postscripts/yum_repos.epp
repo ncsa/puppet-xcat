@@ -1,0 +1,390 @@
+#!/bin/sh
+
+## USAGE
+
+PRG=$( basename $0 )
+
+function usage {
+  cat << ENDHERE
+
+$PRG
+    Configure basic Yum repos and configuration and apply yum updates.
+Usage:
+    $PRG [OPTIONS]
+
+    -s SNAPSHOT  :  Optionally specify a snapshot ID/timestamp to override
+                    what is hard-coded into the script (i.e., what Puppet
+                    put there). Useful when testing a new patch level before
+                    a PM, etc.
+    -u SEC_ID     :  Optionally specify the ID/timestamp for an additional repo with
+                    temporary security updates (e.g., a security_updates repo).
+    -g SEC_GPGFILE  :  Optionally indicate that GPG key checking should occur, using
+                    the specified GPG key. (You will likely want to supply the
+                    default CentOS GPG key
+                        /etc/pki/rpm-gpg/RPM-GPG-KEY-Adiscon
+                    as this probably where your security
+                    patches came from, unless you built your own, in which case
+                    they might not be signed and you should not do GPG checking...).
+
+    E.g.,
+        $PRG -s 2018-11-26-1543271102 -u 2019-01-15-1547577587 \\
+             -g /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+ENDHERE
+}
+
+if [[ $# -eq 0 ]]; then
+  usage;
+  exit 0
+fi
+
+while [[ $# -gt 0 ]] ; do
+  case $1 in
+    --help|-h) usage
+               exit 0;;
+           -s) SNAPSHOT=$2;
+               shift;;
+           -u) SEC_ID=$2;
+               shift;;
+           -g) SEC_GPGFILE=$2;
+               shift;;
+           *)  echo "invalid option"; exit 2;;
+  esac
+  shift
+done
+
+## FUNCTION DEFINITIONS
+
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+# SET RELEASEVER
+# set the OS release version to undefined initially; we should error
+# if we don't find a valid OS
+logr "setting RELEASEVER for repo files"
+RELEASEVER=undefined
+if [[ $OSVER = centos6* ]]; then
+  RELEASEVER=6
+fi
+if [[ $OSVER = centos7* ]]; then
+  RELEASEVER=7
+fi
+
+# VALUES FROM PUPPET/HIERA
+REPOSERVERIP="<%= $xcat::master::postscripts::reposerverip %>"
+logr "RepoServerIP '$REPOSERVERIP'"
+
+DEFSNAPSHOT='<%= $xcat::master::postscripts::defsnapshot %>'
+logr "Default Pakrat Snapshot '$DEFSNAPSHOT'"
+
+# DECIDE WHICH SNAPSHOT TO USE
+# if the user did NOT specify SNAPSHOT, use DEFSNAPSHOT
+if [[ -z $SNAPSHOT ]]; then
+  SNAPSHOT=$DEFSNAPSHOT
+fi
+logr "SNAPSHOT: '$SNAPSHOT'"
+
+# CHECK THAT SNAPSHOT IS VALID (this also verifies RELEASEVER, REPOSERVERIP)
+testurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/base/$SNAPSHOT/repodata/repomd.xml
+logr "testing base URL: '$testurl'..."
+curl -o /dev/null -Isf "$testurl"
+rc=$?
+if [[ $rc -ne 0 ]] ; then
+  logr "ERROR: failed to access test base URL: '$testurl'"
+  logr "ERROR: curl returned '$rc'"
+  exit 1
+fi
+logr "testing base URL: OK"
+
+# SET REPO FILES AND GPG KEYS
+
+# Begin setting repo files.
+# We need to use IP addresses, not hostnames, because DNS is not set when this script runs.
+# Furthermore, only the management interface is online. Therefore, we'll use the management
+# IP of the site's Yum/Pakrat server for the IP. (This is probably most secure anyway. We
+# should eventually close up the public addresses of the Yum servers, except for possibly
+# syncing from site to site.)
+# We set RELEASEVER (and draw ARCH from xCAT) because the traditional releasever and
+# basearch Yum variables are not available when this script runs.
+
+# Also populate GPG keys.
+# We install them locally because they cannot be located via DNS name or reached via public
+# IPs at this time. (It should probably also be our standard to manage them as files on each
+# host via Puppet as well. It is more involved that referring to web URLs but it seems more
+# secure than drawing them down from the web without "vetting", and allows us to temporarily
+# utilize GPG keys that have been changed.
+
+
+logr "setting up CentOS-Base.repo file"
+
+cat >/etc/yum.repos.d/CentOS-Base.repo <<EOF1A
+# CentOS-Base.repo
+#
+# The mirror system uses the connecting IP address of the client and the
+# update status of each mirror to pick mirrors that are updated to and
+# geographically close to the client.  You should use this for CentOS updates
+# unless you are manually picking other mirrors.
+#
+# If the mirrorlist= does not work for you, as a fall back you can try the 
+# remarked out baseurl= line instead.
+#
+#
+
+[base]
+name=CentOS-$RELEASEVER - Base
+baseurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/base/$SNAPSHOT/
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+#released updates 
+[updates]
+name=CentOS-$RELEASEVER - Updates
+baseurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/updates/$SNAPSHOT/
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+#additional packages that may be useful
+[extras]
+name=CentOS-$RELEASEVER - Extras
+baseurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/extras/$SNAPSHOT/
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+#additional packages that extend functionality of existing packages
+[centosplus]
+name=CentOS-$RELEASEVER - Plus
+baseurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/centosplus/$SNAPSHOT/
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+EOF1A
+
+
+logr "setting up epel.repo file"
+
+cat >/etc/yum.repos.d/epel.repo <<EOF1B
+[epel]
+name=Extra Packages for Enterprise Linux 7 - $basearch
+baseurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/epel/$SNAPSHOT/
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-7
+failovermethod=priority
+EOF1B
+
+cat >/etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-7 <<EOF2B
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: GnuPG v1.4.11 (GNU/Linux)
+
+mQINBFKuaIQBEAC1UphXwMqCAarPUH/ZsOFslabeTVO2pDk5YnO96f+rgZB7xArB
+OSeQk7B90iqSJ85/c72OAn4OXYvT63gfCeXpJs5M7emXkPsNQWWSju99lW+AqSNm
+jYWhmRlLRGl0OO7gIwj776dIXvcMNFlzSPj00N2xAqjMbjlnV2n2abAE5gq6VpqP
+vFXVyfrVa/ualogDVmf6h2t4Rdpifq8qTHsHFU3xpCz+T6/dGWKGQ42ZQfTaLnDM
+jToAsmY0AyevkIbX6iZVtzGvanYpPcWW4X0RDPcpqfFNZk643xI4lsZ+Y2Er9Yu5
+S/8x0ly+tmmIokaE0wwbdUu740YTZjCesroYWiRg5zuQ2xfKxJoV5E+Eh+tYwGDJ
+n6HfWhRgnudRRwvuJ45ztYVtKulKw8QQpd2STWrcQQDJaRWmnMooX/PATTjCBExB
+9dkz38Druvk7IkHMtsIqlkAOQMdsX1d3Tov6BE2XDjIG0zFxLduJGbVwc/6rIc95
+T055j36Ez0HrjxdpTGOOHxRqMK5m9flFbaxxtDnS7w77WqzW7HjFrD0VeTx2vnjj
+GqchHEQpfDpFOzb8LTFhgYidyRNUflQY35WLOzLNV+pV3eQ3Jg11UFwelSNLqfQf
+uFRGc+zcwkNjHh5yPvm9odR1BIfqJ6sKGPGbtPNXo7ERMRypWyRz0zi0twARAQAB
+tChGZWRvcmEgRVBFTCAoNykgPGVwZWxAZmVkb3JhcHJvamVjdC5vcmc+iQI4BBMB
+AgAiBQJSrmiEAhsPBgsJCAcDAgYVCAIJCgsEFgIDAQIeAQIXgAAKCRBqL66iNSxk
+5cfGD/4spqpsTjtDM7qpytKLHKruZtvuWiqt5RfvT9ww9GUUFMZ4ZZGX4nUXg49q
+ixDLayWR8ddG/s5kyOi3C0uX/6inzaYyRg+Bh70brqKUK14F1BrrPi29eaKfG+Gu
+MFtXdBG2a7OtPmw3yuKmq9Epv6B0mP6E5KSdvSRSqJWtGcA6wRS/wDzXJENHp5re
+9Ism3CYydpy0GLRA5wo4fPB5uLdUhLEUDvh2KK//fMjja3o0L+SNz8N0aDZyn5Ax
+CU9RB3EHcTecFgoy5umRj99BZrebR1NO+4gBrivIfdvD4fJNfNBHXwhSH9ACGCNv
+HnXVjHQF9iHWApKkRIeh8Fr2n5dtfJEF7SEX8GbX7FbsWo29kXMrVgNqHNyDnfAB
+VoPubgQdtJZJkVZAkaHrMu8AytwT62Q4eNqmJI1aWbZQNI5jWYqc6RKuCK6/F99q
+thFT9gJO17+yRuL6Uv2/vgzVR1RGdwVLKwlUjGPAjYflpCQwWMAASxiv9uPyYPHc
+ErSrbRG0wjIfAR3vus1OSOx3xZHZpXFfmQTsDP7zVROLzV98R3JwFAxJ4/xqeON4
+vCPFU6OsT3lWQ8w7il5ohY95wmujfr6lk89kEzJdOTzcn7DBbUru33CQMGKZ3Evt
+RjsC7FDbL017qxS+ZVA/HGkyfiu4cpgV8VUnbql5eAZ+1Ll6Dw==
+=hdPa
+-----END PGP PUBLIC KEY BLOCK-----
+EOF2B
+
+
+logr "setting up puppetlabs-pc1.repo file"
+
+cat >/etc/yum.repos.d/puppet5.repo <<EOF1C
+[puppet5]
+name=Puppet 5 Repository el 7 - $ARCH
+baseurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/puppet5/$SNAPSHOT/
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-puppet5-release
+enabled=1
+gpgcheck=1
+EOF1C
+
+cat >/etc/pki/rpm-gpg/RPM-GPG-KEY-puppet5-release <<EOF2C
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mQINBFe2Iz4BEADqbv/nWmR26bsivTDOLqrfBEvRu9kSfDMzYh9Bmik1A8Z036Eg
+h5+TZD8Rrd5TErLQ6eZFmQXk9yKFoa9/C4aBjmsL/u0yeMmVb7/66i+x3eAYGLzV
+FyunArjtefZyxq0B2mdRHE8kwl5XGl8015T5RGHCTEhpX14O9yigI7gtliRoZcl3
+hfXtedcvweOf9VrV+t5LF4PrZejom8VcB5CE2pdQ+23KZD48+Cx/sHSLHDtahOTQ
+5HgwOLK7rBll8djFgIqP/UvhOqnZGIsg4MzTvWd/vwanocfY8BPwwodpX6rPUrD2
+aXPsaPeM3Q0juDnJT03c4i0jwCoYPg865sqBBrpOQyefxWD6UzGKYkZbaKeobrTB
+xUKUlaz5agSK12j4N+cqVuZUBAWcokXLRrcftt55B8jz/Mwhx8kl6Qtrnzco9tBG
+T5JN5vXMkETDjN/TqfB0D0OsLTYOp3jj4hpMpG377Q+6D71YuwfAsikfnpUtEBxe
+NixXuKAIqrgG8trfODV+yYYWzfdM2vuuYiZW9pGAdm8ao+JalDZss3HL7oVYXSJp
+MIjjhi78beuNflkdL76ACy81t2TvpxoPoUIG098kW3xd720oqQkyWJTgM+wV96bD
+ycmRgNQpvqHYKWtZIyZCTzKzTTIdqg/sbE/D8cHGmoy0eHUDshcE0EtxsQARAQAB
+tEhQdXBwZXQsIEluYy4gUmVsZWFzZSBLZXkgKFB1cHBldCwgSW5jLiBSZWxlYXNl
+IEtleSkgPHJlbGVhc2VAcHVwcGV0LmNvbT6JAj4EEwECACgFAle2Iz4CGwMFCQlm
+AYAGCwkIBwMCBhUIAgkKCwQWAgMBAh4BAheAAAoJEH9DgoDvjTSfIN0P/jcCRzK8
+WIdhcNz5dkj7xRZb8Oft2yDfenQmzb1SwGGa96IwJFcjF4Nq7ymcDUqunS2DEDb2
+gCucsqmW1ubkaggsYbc9voz/SQwhsQpBjfWbuyOX9DWmW6av/aB1F85wP79gyfqT
+uidTGxQE6EhDbLe7tuvxOHfM1bKsUtI+0n9TALLLHfXUEdtaXCwMlJuO1IIn1PWa
+H7HzyEjw6OW/cy73oM9nuErBIio1O60slPLOW2XNhdWZJCRWkcXyuumRjoepz7WN
+1JgsLOTcB7rcQaBP3pDN0O/Om5dlDQ6oYitoJs/F0gfEgwK68Uy8k8sUR+FLLJqM
+o0CwOg6CeWU4ShAEd1xZxVYW6VOOKlz9x9dvjIVDn2SlTBDmLS99ySlQS57rjGPf
+GwlRUnuZP4OeSuoFNNJNb9PO6XFSP66eNHFbEpIoBU7phBzwWpTXNsW+kAcY8Rno
+8GzKR/2FRsxe5Nhfh8xy88U7BA0tqxWdqpk/ym+wDcgHBfSRt0dPFnbaHAiMRlgX
+J/NPHBQtkoEdQTKA+ICxcNTUMvsPDQgZcU1/ViLMN+6kZaGNDVcPeMgDvqxu0e/T
+b3uYiId38HYbHmD6rDrOQL/2VPPXbdGbxDGQUgX1DfdOuFXw1hSTilwI1KdXxUXD
+sCsZbchgliqGcI1l2En62+6pI2x5XQqqiJ7+
+=HpaX
+-----END PGP PUBLIC KEY BLOCK-----
+EOF2C
+
+
+logr "setting up rsyslog-v8-stable.repo file"
+      
+cat >/etc/yum.repos.d/rsyslog-v8-stable.repo <<EOF1D
+[rsyslog-v8-stable]
+name=Rsyslog Repo
+baseurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/rsyslog-v8-stable/$SNAPSHOT
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-Adiscon
+EOF1D
+
+cat >/etc/pki/rpm-gpg/RPM-GPG-KEY-Adiscon <<EOF2D
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: GnuPG v1.4.13 (GNU/Linux)
+
+mQENBFEt3pYBCADgzZ8lOM6pkzaIFXh8RdDgLc17bn3a/Xmi3tBtMAmTX8dETIwe
+Ktjg/BG1uzKF2SLnukxMRxhwfQSccQ5hoK1r5NqhID+p16JvyhjoAMt2xMgMQBjs
+b6wePjGVPjikdkSNrtQ3CP9VEHfV1EFcW2Vrhc70TJM2fLqP8SQFiCAERjBqetgx
+JyEVwCr7UnIPpQHTomk94kcTvbJ4usT5XWXnJgh0YuG9Zng+p4+TLPDHNl6ZDiYH
+dEYWmeeMYiLThRLRhQEzgg3POvVLRcnOXitjp5BDtyz59HAftOLmbH4eirSQNQE1
+ej3AJjUXLImiAvfb8QLnIskZp0Ow2y5t4Na5ABEBAAG0NkFuZHJlIExvcmJhY2gg
+KFJQTSBTaWduaW5nIEtleSkgPGFsb3JiYWNoQGFkaXNjb24uY29tPokBOAQTAQIA
+IgUCUS3elgIbAwYLCQgHAwIGFQgCCQoLBBYCAwECHgECF4AACgkQ4PIzs+ALiYXV
+SQf+KT17ifY7ps8CNyCX1UXLCzGqMPpy0mihPiaN75l0l/K7+sKd/JV6klzP3SmH
+nsBU7yPgKs+7IFl80p1CC1N6ykO1YdItV0J0LqbW/8JAjygppkUTMlqT8uLGArpO
+r9SVyEOmRE0JZ5o0arXT96yAVYlTFmUJ35oQL1qoHJZP2DGXjzUkLVZX3KcZmczj
+D8wQ3lB3AQxnL8iPVE0hze2UaIip0tYFDfHGelU+CprW3DDk1xkqdEgJtb1VNUOC
+6qCFHtVVkbUmdgh8u0h+qdFy5cBF5nN7OwMTSH+1QizcMbdjv4BsbnKyfZuEJivs
+ndqdf6wFsvA9ZLCz57UVfj19drkBDQRRLd6WAQgAzfWizQjIBEe38nXQ4zHsn9BV
+X7LY7SRC3EnMuhgvCzzv101HJAe1hAJayTYyhWdkErQ7qEg4bMA+p0EUzSXp5KWU
+SF1CuAMbPZ4Qps5yaiNX9Hs5YjFjgtkqQ67ClXTWuey7MJHYVApOckoHHAyePQG7
+qokpbig3N8jIabXOnZ9nUDFmhTVTowz/73yci5vkoS8kK6cFxHJe4J9yE2oKEvOU
+qtDJ8++bqzqDAkdYboM2tiAA5CT3w8Mc1kIWHBqweZ9c92GRXirYfuekc/oyWthG
+UUklUSQnTxjfNk66ZjEJLVPPm3+YiEDZPnAPe4DbR8/mBzLjiK3PH+BtMSpF+wAR
+AQABiQEfBBgBAgAJBQJRLd6WAhsMAAoJEODyM7PgC4mFinIH/1u+GoEXktBlkjVw
+35Vlw1s4+zgSJVTlto/FyiYrq97Z6Yf6l4uM4KBPTOd14/FH3pBwVsrtLI/32cAa
+I/QYCR87AEQeVRDTLCTz+hMbGCGY7/JAdEz3JpnC+WItMeN3OzCrQD/XO918A2B0
+R3Q37aLOIolrdcf54k33ZeaGwOeVMQTxbrgtRbS9WM8QU6A6ZS9CSDDLPETP3Sx2
+P+9tLAVvf0XLJVCnbtvZWK+oKz0qGPnlfVQNK2OmMLyg/Cp7ly/I+VovOyXgcbXt
+pQ4LDGEmTPT1qyrXC0pfVQH/ofSUXEc/zXJwb5PJ2AsGP/Zl2EyK7/X0SszJAnYG
+Kjf6Ih4=
+=Ex/C
+-----END PGP PUBLIC KEY BLOCK-----
+EOF2D
+
+# IF A SECURITY UPDATES REPO ID WAS SPECIFIED, CREATE AND TEST IT
+if [[ -n $SEC_ID ]]; then
+  testurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/security_updates/$SEC_ID/repodata/repomd.xml
+  logr "testing security URL: '$testurl'..."
+  curl -o /dev/null -Isf "$testurl" \
+  rc_s=$?
+  if [[ $rc_s -ne 0 ]] ; then
+    logr "ERROR: failed to access test security URL: '$testurl'"
+    logr "ERROR: curl returned '$rc_s'"
+    exit 3
+  fi
+  logr "testing security URL: OK"
+  logr "setting up security_updates.repo file"
+  cat >/etc/yum.repos.d/security_updates.repo <<EOFSEC
+[security_updates]
+name=LSST Security Updates
+baseurl=http://$REPOSERVERIP/centos/$RELEASEVER/$ARCH/security_updates/$SEC_ID
+enabled=1
+EOFSEC
+  if [[ -n $SEC_GPGFILE ]]; then
+    if [[ ! -f $SEC_GPGFILE ]]; then
+      logr "ERROR: security_updates repo: specified GPG key file does NOT exist: '$SEC_GPGFILE'"
+      exit 4
+    fi
+    logr "security_updates repo: configuring GPG checking with specified GPG key file"
+    cat >>/etc/yum.repos.d/security_updates.repo <<EOFSECGPGEN
+gpgcheck=1
+gpgkey=file://$SEC_GPGFILE
+EOFSECGPGEN
+  else
+    logr "security_updates repo: disabling GPG checking"
+    cat >>/etc/yum.repos.d/security_updates.repo <<EOFSECGPGDIS
+gpgcheck=0
+EOFSECGPGDIS
+  fi
+fi
+
+## REMOVE xCAT REPOS
+
+# do NOT remove otherpkgs - if we decide we need to do this,
+# then we should do via some postbootscript after otherpkgs
+# runs
+logr "removing main xCAT repo files"
+rm -f /etc/yum.repos.d/xCAT-centos*
+rm -f /etc/yum.repos.d/local-repository-0.repo
+
+
+## IMPORT GPG KEYS
+logr "importing RPM GPG keys"
+find /etc/pki/rpm-gpg -type f | xargs rpm --import
+
+
+## OTHER YUM CONFIG
+
+# configure /etc/yum.conf
+# make sure we only keep 3 kernels (we may drop this to 2 in
+# Puppet, but at this point we might want 3 - the kernel we
+# deploy with, the next major release, and the next point
+# release
+## TBD
+## NOTE: should not be necessary because we should only have the anaconda-
+## installed kernel + one newer kernel
+
+# make sure delta RPMs are disabled
+if [ -f /etc/yum.conf ]; then
+  if [ $(grep -El "^deltarpm=0$" /etc/yum.conf) ]; then
+    logr "delta RPMs already disabled"
+  elif [ $(grep -El "^deltarpm=[0-9]+$" /etc/yum.conf) ]; then
+    logr "delta RPMs enabled - disabling delta RPMs"
+    sed 's/^deltarpm=[0-9]\+$/deltarpm=0/g' /etc/yum.conf > /etc/yum.conf.tmp && \
+    mv /etc/yum.conf.tmp /etc/yum.conf
+  elif [ $(grep -El "^deltarpm=" /etc/yum.conf) ]; then
+    logr "there was an error disabling delta RPMs"
+  else
+    logr "disabling delta RPMs"
+    echo "deltarpm=0" >> /etc/yum.conf
+  fi
+fi
+
+# clean Yum cache to make sure all repos are reloaded next time
+# Yum runs
+logr "yum clean all and rm yum cache"
+yum clean all
+rm -rf /var/cache/yum
+
+# Do upgrade from newly updated repos
+logr "Starting yum upgrade..."
+yum -y upgrade
+logr "yum upgrade completed"
