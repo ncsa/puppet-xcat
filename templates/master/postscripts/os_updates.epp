@@ -33,11 +33,6 @@ Usage:
 ENDHERE
 }
 
-if [[ $# -eq 0 ]]; then
-  usage;
-  exit 0
-fi
-
 while [[ $# -gt 0 ]] ; do
   case $1 in
     --help|-h) usage
@@ -210,7 +205,7 @@ RjsC7FDbL017qxS+ZVA/HGkyfiu4cpgV8VUnbql5eAZ+1Ll6Dw==
 EOF2B
 
 
-logr "setting up puppetlabs-pc1.repo file"
+logr "setting up puppet repo"
 
 cat >/etc/yum.repos.d/puppet5.repo <<EOF1C
 [puppet5]

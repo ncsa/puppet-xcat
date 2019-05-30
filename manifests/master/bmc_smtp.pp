@@ -15,7 +15,9 @@ class xcat::master::bmc_smtp {
     # Check all ip's, find if one is on the same network as $ipmi_network
     $bind_ip = $facts['networking']['interfaces'].reduce('') | $memo, $kv | {
         # $kv is [ interface_name , interface_data ]
+        $if_name = $kv[0]
         $interface_data = $kv[1]
+        $ip = $interface_data['ip']
         $network = $interface_data['network']
         if $network == $tgt_net {
             $interface_data['ip']
@@ -24,18 +26,20 @@ class xcat::master::bmc_smtp {
         }
     }
 
-    if $bind_ip {
-        ::xinetd::service { 'bmc_smtp':
-            service_type => 'UNLISTED',
-            wait         => 'no',
-            user         => 'nobody',
-            groups       => 'no',
-            group        => 'nobody',
-            bind         => $bind_ip,
-            port         => '25',
-            redirect     => 'localhost 25',
-        }
+    $ensure = $bind_ip ? {
+        String[1] => 'present',
+        default   => 'absent',
     }
-
+    ::xinetd::service { 'bmc_smtp':
+        ensure       => $ensure,
+        service_type => 'UNLISTED',
+        wait         => 'no',
+        user         => 'nobody',
+        groups       => 'no',
+        group        => 'nobody',
+        bind         => $bind_ip,
+        port         => '25',
+        redirect     => 'localhost 25',
+    }
 
 }
