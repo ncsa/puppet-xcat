@@ -11,10 +11,8 @@
 class xcat::master::postscripts (
     String $defsnapshot,
     String $reposerverip,
+    String $install_dir,
 ) {
-
-    # local variables
-    $ps_dir = '/install/postscripts'
 
     $file_defaults = {
         owner => 'root',
@@ -22,12 +20,19 @@ class xcat::master::postscripts (
         mode  => '0755',
     }
 
-    # scripts from templates
-    file {
-        "${ps_dir}/yum_repos":
+
+    # What will be installed
+    $file_data = {
+        $install_dir => {
+            ensure => 'directory',
+        },
+        "${install_dir}/os_updates" => {
             ensure  => 'file',
-            content => epp( 'xcat/master/postscripts/yum_repos.epp' ),
-        ;
-        default: * => $file_defaults ;
+            content => epp( 'xcat/master/postscripts/os_updates.epp' ),
+            require => File[ $install_dir ],
+        },
     }
+
+    # Realize 
+    ensure_resources( 'file', $file_data, $file_defaults )
 }
