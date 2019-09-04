@@ -21,6 +21,7 @@ class xcat::client::ssh (
     }
     ::ssh::allow_from{ 'xcat-client-ssh':
         hostlist              => [ $master_node_ip ],
+        pam_access_users      => [root],
         sshd_cfg_match_params => $params,
     }
 
