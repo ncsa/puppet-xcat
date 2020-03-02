@@ -20,9 +20,9 @@ class xcat::client::ssh (
         'Banner'                => 'none',
     }
     ::sshd::allow_from{ 'xcat-client-ssh':
-        hostlist              => [ $master_node_ip ],
-        pam_access_users      => [root],
-        sshd_cfg_match_params => $params,
+        hostlist                => [ $master_node_ip ],
+        users                   => [ root ],
+        additional_match_params => $params,
     }
 
     # Authorize root's public key (from xcat master node)
