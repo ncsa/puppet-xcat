@@ -3,6 +3,8 @@
 
 Configure an xcat master node.
 
+Configure an xcat client node for access from xcat_master
+
 #### Table of Contents
 
 1. [Description](#description)
@@ -20,7 +22,7 @@ See also: https://github.com/ncsa/xcat-tools
 
 ## Dependencies
 
-* https://github.com/ncsa/puppet-ssh
+* https://github.com/ncsa/puppet-sshd
 * https://forge.puppet.com/inkblot/ipcalc
 
 ## Setup

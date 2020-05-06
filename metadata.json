@@ -1,5 +1,5 @@
 {
-  "name": "lsst-xcat",
+  "name": "ncsa-xcat",
   "version": "0.1.0",
   "author": "NCSA",
   "summary": "",
@@ -7,7 +7,7 @@
   "source": "",
   "dependencies": [
     {
-      "name": "lsst/sshd",
+      "name": "ncsa/sshd",
       "version_requirement": ">= 0.0.1"
     },
     {
