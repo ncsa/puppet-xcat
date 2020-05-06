@@ -24,6 +24,7 @@ See also: https://github.com/ncsa/xcat-tools
 
 * https://github.com/ncsa/puppet-sshd
 * https://forge.puppet.com/inkblot/ipcalc
+* https://forge.puppet.com/sharumpe/tcpwrappers
 
 ## Setup
 
