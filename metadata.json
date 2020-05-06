@@ -1,5 +1,5 @@
 {
-  "name": "ncsa-xcat",
+  "name": "lsst-xcat",
   "version": "0.1.0",
   "author": "NCSA",
   "summary": "",
@@ -7,12 +7,20 @@
   "source": "",
   "dependencies": [
     {
-      "name": "ncsa/ssh",
+      "name": "lsst/sshd",
       "version_requirement": ">= 0.0.1"
     },
     {
       "name": "inkblot-ipcalc",
       "version_requirement": ">= 2.2.0"
+    },
+    {
+      "name": "puppetlabs-firewall",
+      "version_requirement": ">= 2.2.0"
+    },
+    {
+      "name": "puppetlabs-xinetd",
+      "version_requirement": ">= 3.0.0"
     }
   ],
   "operatingsystem_support": [
@@ -47,7 +55,7 @@
       "version_requirement": ">= 4.10.0 < 7.0.0"
     }
   ],
-  "pdk-version": "1.13.0",
-  "template-url": "pdk-default#1.13.0",
-  "template-ref": "1.13.0-0-g66e1443"
+  "pdk-version": "1.15.0",
+  "template-url": "pdk-default#1.15.0",
+  "template-ref": "tags/1.15.0-0-g0bc522e"
 }
