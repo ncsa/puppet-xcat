@@ -1,6 +1,6 @@
 # @summary Harden NFS settings on xcat-master
 #
-# Restrict exports to the mgmt network
+# Allow exports only on the mgmt network
 #
 # @example
 #   include xcat::master::nfs
