@@ -22,29 +22,21 @@ Configures the OS settings around an xcat master node. Does not install xcat.
 See also: https://github.com/ncsa/xcat-tools
 
 ## Reference
-```
-###FILE manifests/master/root.pp
-class xcat::master::root (
-    String $sshkey_pub,
-    String $sshkey_priv,
-    String $sshkey_type,
-) {
-###FILE manifests/master/postscripts.pp
-class xcat::master::postscripts (
-    String $defsnapshot,
-    String $reposerverip,
-    String $install_dir,
-) {
-###FILE manifests/client/ssh.pp
-class xcat::client::ssh (
-    String $master_node_ip,
-) {
-###FILE manifests/init.pp
-class xcat (
-    String $network_mgmt,
-    String $network_ipmi,
-) {
-```
+
+### class xcat::master::root (
+-    String $sshkey_pub,
+-    String $sshkey_priv,
+-    String $sshkey_type,
+### class xcat::master::postscripts (
+-    String $defsnapshot,
+-    String $reposerverip,
+-    String $install_dir,
+### class xcat::client::ssh (
+-    String $master_node_ip,
+### class xcat (
+-    String $network_mgmt,
+-    String $network_ipmi,
+
 See also: [REFERENCE.md](REFERENCE.md)
 
 ## Dependencies
