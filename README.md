@@ -1,6 +1,10 @@
 
 # xcat
 
+DEPRECATED - New users should use [puppet-profile_xcat](https://github.com/ncsa/puppet-profile_xcat)
+
+---
+
 Configure an xcat master node.
 
 Configure an xcat client node for access from xcat_master
